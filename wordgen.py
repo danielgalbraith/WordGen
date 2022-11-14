@@ -67,7 +67,7 @@ def generate_onset(oldsyl, cons_df):
 		elif oldsyl[0] == 'k' or oldsyl[0] == 'g':
 			onsc1weights = get_weights(cons_df, "onsc1,prec velar ons")
 			return random(onsc1, onsc1weights)
-		elif oldsyl[0] == 'm' or oldsyl[0] == 'n' or oldsyl[0] == 'ɲ':
+		elif oldsyl[0] == 'm' or oldsyl[0] == 'n' or oldsyl[0] == 'ɲ' or oldsyl[0] == 'ŋ':
 			onsc1weights = get_weights(cons_df, "onsc1,prec nasal ons")
 			return random(onsc1, onsc1weights)
 		elif oldsyl[0] == 'l' or oldsyl[0] == 'r':
