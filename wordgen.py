@@ -32,7 +32,7 @@ def read_from_csv(datafile):
         return None, None
 
     # Extract rules from the 'Rules' column and drop NaN values
-    rules = df['Rules'].dropna(how='all')
+    rules = df['Rules'].dropna(how='all').tolist()
 
     # Extract vowels and their weights
     vowels = df.iloc[:1, 1:].dropna(axis=1)  # Select first row (vowels) excluding NaN columns
@@ -49,15 +49,13 @@ def read_from_csv(datafile):
 
     # Map consonant weights to rules
     cons_weights_map = {}
-    idx = 0
-    for rule in rules.values.flatten().tolist():
-        cons_weights = []
-        if len(rule.split(',')) > 1:
-            with pd.option_context("future.no_silent_downcasting", True):
-                cons_weights = df.iloc[idx:idx+1, 1:len(cons_list)+1].fillna(0.0).infer_objects(copy=False).values.flatten().tolist()
-            cons_weights = [float(i) for i in cons_weights]
-            cons_weights_map[rule] = cons_weights
-        idx += 1
+
+    cons_rules = rules[rules.index('C')+1:]
+    for rule in cons_rules:
+        row_index = df.index[df['Rules'] == rule].tolist()[0]
+        cons_weights = df.iloc[row_index, 1:].fillna(0.0).tolist()
+        cons_weights = [float(i) for i in cons_weights]
+        cons_weights_map[rule] = cons_weights
 
     # Create DataFrames for vowels and consonants
     vowel_df = pd.DataFrame(vowel_weights, index=vowel_list)
@@ -104,32 +102,35 @@ def get_weights(df, rule):
     return df[rule].astype(float).tolist()
 
 
-def get_onset_weights(oldsyl, cons_df):
+def get_onset_weights(oldsyl, cons_df, syl_idx, sylnum):
     """
     Retrieves onset weights based on the previous syllable.
 
     Args:
         oldsyl (str): The previous syllable.
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
+        syl_idx (int): The index of the current syllable.
+        sylnum (int): The total number of syllables.
 
     Returns:
         list: A list of weights for the onset.
     """
-    onset_rules = {
-        'p': "onsc1,prec labial ons", 'b': "onsc1,prec labial ons", 'f': "onsc1,prec labial ons",
-        't': "onsc1,prec alveolar ons", 'd': "onsc1,prec alveolar ons", 's': "onsc1,prec alveolar ons",
-        'k': "onsc1,prec velar ons", 'g': "onsc1,prec velar ons",
-        'm': "onsc1,prec nasal ons", 'n': "onsc1,prec nasal ons", 'ɲ': "onsc1,prec nasal ons", 'ŋ': "onsc1,prec nasal ons",
-        'l': "onsc1,prec liquid ons", 'r': "onsc1,prec liquid ons",
-        'z': "onsc1,prec sibilant ons", 'ʃ': "onsc1,prec sibilant ons", 'ʧ': "onsc1,prec sibilant ons",
-        'h': "onsc1,prec glottal ons", 'ʔ': "onsc1,prec glottal ons",
-        'w': "onsc1,prec semivowel ons", 'j': "onsc1,prec semivowel ons",
-    }
+    # TODO - implement special rules
+    # onset_rules = {
+    #     'p': "onsc1,prec labial ons", 'b': "onsc1,prec labial ons", 'f': "onsc1,prec labial ons",
+    #     't': "onsc1,prec alveolar ons", 'd': "onsc1,prec alveolar ons", 's': "onsc1,prec alveolar ons",
+    #     'k': "onsc1,prec velar ons", 'g': "onsc1,prec velar ons",
+    #     'm': "onsc1,prec nasal ons", 'n': "onsc1,prec nasal ons", 'ɲ': "onsc1,prec nasal ons", 'ŋ': "onsc1,prec nasal ons",
+    #     'l': "onsc1,prec liquid ons", 'r': "onsc1,prec liquid ons",
+    #     'z': "onsc1,prec sibilant ons", 'ʃ': "onsc1,prec sibilant ons", 'ʧ': "onsc1,prec sibilant ons",
+    #     'h': "onsc1,prec glottal ons", 'ʔ': "onsc1,prec glottal ons",
+    #     'w': "onsc1,prec semivowel ons", 'j': "onsc1,prec semivowel ons",
+    # }
     
     if oldsyl == '':
-        return get_weights(cons_df, "onsc1,first syl")
+        return get_weights(cons_df, "initial onset")
     else:
-        return get_weights(cons_df, onset_rules.get(oldsyl[0], "onsc1,prec no ons"))
+        return get_weights(cons_df, "medial onset")
 
 
 def get_coda_weights(oldsyl, cons_df, syl_idx, sylnum):
@@ -145,44 +146,49 @@ def get_coda_weights(oldsyl, cons_df, syl_idx, sylnum):
     Returns:
         list: A list of weights for the coda.
     """
-    coda_rules = {
-        'm': "coda,before penult prec nasal coda", 'n': "coda,before penult prec nasal coda", 'ŋ': "coda,before penult prec nasal coda",
-        'p': "coda,before penult prec p coda",
-        't': "coda,before penult prec t coda",
-        'k': "coda,before penult prec k coda",
-        's': "coda,before penult prec s coda",
-        'l': "coda,before penult prec liquid coda", 'r': "coda,before penult prec liquid coda",
-        'w': "coda,before penult prec semivowel coda", 'j': "coda,before penult prec semivowel coda"
-    }
+    # TODO - implement special rules
+    # coda_rules = {
+    #     'm': "coda,before penult prec nasal coda", 'n': "coda,before penult prec nasal coda", 'ŋ': "coda,before penult prec nasal coda",
+    #     'p': "coda,before penult prec p coda",
+    #     't': "coda,before penult prec t coda",
+    #     'k': "coda,before penult prec k coda",
+    #     's': "coda,before penult prec s coda",
+    #     'l': "coda,before penult prec liquid coda", 'r': "coda,before penult prec liquid coda",
+    #     'w': "coda,before penult prec semivowel coda", 'j': "coda,before penult prec semivowel coda"
+    # }
 
     coda_weights_key = None
 
     if sylnum == 1:
-        coda_weights_key = "coda,monosyllable"
-    elif syl_idx < sylnum - 2:
-        if len(oldsyl) > 2:
-            if oldsyl[2] in coda_rules:
-                coda_weights_key = coda_rules[oldsyl[2]]
-            else:
-                coda_weights_key = "coda,before penult prec no coda"
-        else:
-            coda_weights_key = "coda,before penult prec no coda"
-    elif syl_idx == sylnum - 2:
-        if len(oldsyl) > 2:
-            if oldsyl[2] in coda_rules:
-                coda_weights_key = coda_rules[oldsyl[2]]
-            else:
-                coda_weights_key = "coda,penult prec no coda"
-        else:
-            coda_weights_key = "coda,penult prec no coda"
+        coda_weights_key = "final coda"
     elif syl_idx == sylnum - 1:
-        if len(oldsyl) > 2:
-            if oldsyl[2] in coda_rules:
-                coda_weights_key = coda_rules[oldsyl[2]]
-            else:
-                coda_weights_key = "coda,last syl prec no coda"
-        else:
-            coda_weights_key = "coda,last syl prec no coda"
+    	coda_weights_key = "final coda"
+    else:
+    	coda_weights_key = "nonfinal coda"
+    # elif syl_idx < sylnum - 2:
+    #     if len(oldsyl) > 2:
+    #         if oldsyl[2] in coda_rules:
+    #             coda_weights_key = coda_rules[oldsyl[2]]
+    #         else:
+    #             coda_weights_key = "coda,before penult prec no coda"
+    #     else:
+    #         coda_weights_key = "coda,before penult prec no coda"
+    # elif syl_idx == sylnum - 2:
+    #     if len(oldsyl) > 2:
+    #         if oldsyl[2] in coda_rules:
+    #             coda_weights_key = coda_rules[oldsyl[2]]
+    #         else:
+    #             coda_weights_key = "coda,penult prec no coda"
+    #     else:
+    #         coda_weights_key = "coda,penult prec no coda"
+    # elif syl_idx == sylnum - 1:
+    #     if len(oldsyl) > 2:
+    #         if oldsyl[2] in coda_rules:
+    #             coda_weights_key = coda_rules[oldsyl[2]]
+    #         else:
+    #             coda_weights_key = "coda,last syl prec no coda"
+    #     else:
+    #         coda_weights_key = "coda,last syl prec no coda"
 
     if coda_weights_key is not None:
         return get_weights(cons_df, coda_weights_key)
@@ -203,19 +209,21 @@ def generate_nucleus(vowel_df):
     return weighted_random_choice(list(vowel_df.index), vowel_df.iloc[:, 0].astype(float).tolist())
 
 
-def generate_onset(oldsyl, cons_df):
+def generate_onset(oldsyl, cons_df, syl_idx, sylnum):
     """
     Generates an onset (consonant or cluster) for a syllable based on previous syllable and consonant weights.
 
     Args:
         oldsyl (str): The previous syllable.
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
+        syl_idx (int): The index of the current syllable.
+        sylnum (int): The total number of syllables.
 
     Returns:
         str: A randomly selected onset.
     """
     onsets = ['' if c == '_' else c for c in list(cons_df.index)]
-    weights = get_onset_weights(oldsyl, cons_df)
+    weights = get_onset_weights(oldsyl, cons_df, syl_idx, sylnum)
     return weighted_random_choice(onsets, weights)
 
 
@@ -269,7 +277,7 @@ def generate_words(vowel_df, cons_df, sylnum, outputlines):
         
         for j in range(num_syllables):
             nucleus = generate_nucleus(vowel_df)
-            onset = generate_onset(oldsyl, cons_df)
+            onset = generate_onset(oldsyl, cons_df, j, num_syllables)
             coda = generate_coda(oldsyl, cons_df, j, num_syllables)
             
             syllable = onset + nucleus + coda
