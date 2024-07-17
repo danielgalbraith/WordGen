@@ -64,6 +64,26 @@ def read_from_csv(datafile):
     return vowel_df, cons_df
 
 
+def read_place_file(place_file):
+    """
+    Reads data from a CSV file and processes it into place features DataFrames.
+
+    Args:
+        place_file (str): Path to the CSV file.
+
+    Returns:
+        place_df (pd.DataFrame): DataFrame with consonants and their place features.
+    """
+    try:
+        # Attempt to read the CSV file into a DataFrame
+        place_df = pd.read_csv(place_file)
+    except FileNotFoundError:
+        # Handle the case where the file is not found
+        print(f"Error: The file {place_file} was not found.")
+        return None
+    return place_df
+
+
 def weighted_random_choice(chars, weights):
     """
     Selects a random character from a list of characters based on given weights.
@@ -102,7 +122,76 @@ def get_weights(df, rule):
     return df[rule].astype(float).tolist()
 
 
-def get_onset_weights(oldsyl, cons_df, syl_idx, sylnum):
+def adjust_weights_by_place(weights, reduce_indices, reduction_factor):
+    """
+    Adjust weights by reducing selected weights and proportionally scaling the rest.
+
+    Args:
+        weights (list of float): The original list of weights.
+        reduce_indices (list of int): Indices of weights to be reduced.
+        reduction_factor (float): The factor by which to reduce the selected weights.
+
+    Returns:
+        list of float: The adjusted list of weights.
+    """
+    # Reduce the selected weights by given factor
+    reduced_weights = [weights[i] * reduction_factor if i in reduce_indices else weights[i] for i in range(len(weights))]
+    # Calculate the total of the reduced weights
+    total_reduced = sum(reduced_weights[i] for i in reduce_indices)
+    # Determine the total reduction
+    original_reduced_sum = sum(weights[i] for i in reduce_indices)
+    total_reduction = original_reduced_sum - total_reduced
+    # Calculate the total of the unchanged values
+    unchanged_indices = [i for i in range(len(weights)) if i not in reduce_indices]
+    total_unchanged = sum(weights[i] for i in unchanged_indices)
+    # Adjust the unchanged values proportionally
+    scaling_factor = (total_unchanged + total_reduction) / total_unchanged
+    adjusted_weights = [weights[i] * scaling_factor if i in unchanged_indices else reduced_weights[i] for i in range(len(weights))]
+    return adjusted_weights
+
+
+def get_cons_features(cons_df, place_df):
+    """
+    Retrieves place features of consonants from DataFrame.
+
+    Args:
+        cons_df (pd.DataFrame): DataFrame containing the consonants.
+        place_df (pd.DataFrame): DataFrame containing consonants with corresponding place features.
+
+    Returns:
+        cons_place_map: A dict mapping consonants to their place features.
+    """
+
+    def get_place(cons, place_df):
+        if cons in place_df['Consonant'].values:
+            return place_df.loc[place_df['Consonant'] == cons, 'Place'].iloc[0]
+        return 'other'
+
+    cons_list = ['' if c == '_' else c for c in list(cons_df.index)]
+    cons_place_map = { cons: get_place(cons, place_df) for cons in cons_list }
+    
+    return cons_place_map
+
+
+def get_reduce_indices(oldsyl, cons_place_map, cons_df, is_onset):
+    """
+    Get indices of consonants with the same place value as the target consonant in a syllable.
+
+    Args:
+        oldsyl (str): The previous syllable.
+        cons_place_map (dict): Mapping from consonants to place features.
+        cons_df (pandas.DataFrame): DataFrame containing the consonants.
+        is_onset (bool): A flag indicating if the target consonant is an onset (True) or a coda (False).
+
+    Returns:
+        list: A list of indices of consonants with the same place value in the DataFrame.
+    """
+    idx = 0 if is_onset else -1
+    place_value = cons_place_map.get(oldsyl[idx])
+    return [cons_df.index.get_loc(key) for key, value in cons_place_map.items() if value == place_value and key in cons_df.index]
+
+
+def get_onset_weights(oldsyl, cons_df, syl_idx, sylnum, cons_place_map):
     """
     Retrieves onset weights based on the previous syllable.
 
@@ -111,29 +200,27 @@ def get_onset_weights(oldsyl, cons_df, syl_idx, sylnum):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         syl_idx (int): The index of the current syllable.
         sylnum (int): The total number of syllables.
+        cons_place_map (dict): Mapping from consonants to place features.
 
     Returns:
         list: A list of weights for the onset.
     """
-    # TODO - implement special rules
-    # onset_rules = {
-    #     'p': "onsc1,prec labial ons", 'b': "onsc1,prec labial ons", 'f': "onsc1,prec labial ons",
-    #     't': "onsc1,prec alveolar ons", 'd': "onsc1,prec alveolar ons", 's': "onsc1,prec alveolar ons",
-    #     'k': "onsc1,prec velar ons", 'g': "onsc1,prec velar ons",
-    #     'm': "onsc1,prec nasal ons", 'n': "onsc1,prec nasal ons", 'ɲ': "onsc1,prec nasal ons", 'ŋ': "onsc1,prec nasal ons",
-    #     'l': "onsc1,prec liquid ons", 'r': "onsc1,prec liquid ons",
-    #     'z': "onsc1,prec sibilant ons", 'ʃ': "onsc1,prec sibilant ons", 'ʧ': "onsc1,prec sibilant ons",
-    #     'h': "onsc1,prec glottal ons", 'ʔ': "onsc1,prec glottal ons",
-    #     'w': "onsc1,prec semivowel ons", 'j': "onsc1,prec semivowel ons",
-    # }
-    
+    ons_weights = []
     if oldsyl == '':
-        return get_weights(cons_df, "initial onset")
+        ons_weights = get_weights(cons_df, "initial onset")
     else:
-        return get_weights(cons_df, "medial onset")
+        ons_weights = get_weights(cons_df, "medial onset")
+        if oldsyl[0] in cons_place_map.keys() and cons_place_map[oldsyl[0]] != 'other':
+            reduce_indices = get_reduce_indices(oldsyl, cons_place_map, cons_df, True)
+            ons_weights = adjust_weights_by_place(ons_weights, reduce_indices, 0.1)
+    
+    if ons_weights:
+        return ons_weights
+    else:
+        raise ValueError("Invalid syllable index or total syllable count.")
 
 
-def get_coda_weights(oldsyl, cons_df, syl_idx, sylnum):
+def get_coda_weights(oldsyl, cons_df, syl_idx, sylnum, cons_place_map):
     """
     Retrieves coda weights based on the syllable index and total syllable count.
 
@@ -142,56 +229,42 @@ def get_coda_weights(oldsyl, cons_df, syl_idx, sylnum):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         syl_idx (int): The index of the current syllable.
         sylnum (int): The total number of syllables.
+        cons_place_map (dict): Mapping from consonants to place features.
 
     Returns:
         list: A list of weights for the coda.
     """
-    # TODO - implement special rules
-    # coda_rules = {
-    #     'm': "coda,before penult prec nasal coda", 'n': "coda,before penult prec nasal coda", 'ŋ': "coda,before penult prec nasal coda",
-    #     'p': "coda,before penult prec p coda",
-    #     't': "coda,before penult prec t coda",
-    #     'k': "coda,before penult prec k coda",
-    #     's': "coda,before penult prec s coda",
-    #     'l': "coda,before penult prec liquid coda", 'r': "coda,before penult prec liquid coda",
-    #     'w': "coda,before penult prec semivowel coda", 'j': "coda,before penult prec semivowel coda"
-    # }
+    def adjust_coda_weights(weights, no_coda_value, remaining_sum):
+        weights[0] = no_coda_value
+        scaling_factor = remaining_sum / sum(weights[1:])
+        weights[1:] = [x * scaling_factor for x in weights[1:]]
+        return weights
 
-    coda_weights_key = None
-
+    coda_weights = []
     if sylnum == 1:
-        coda_weights_key = "final coda"
-    elif syl_idx == sylnum - 1:
-    	coda_weights_key = "final coda"
+        # For monosyllabic words, reduce coda likelihood from 30% to 15%:
+        coda_weights = get_weights(cons_df, "final coda")
+        coda_weights = adjust_coda_weights(coda_weights, 0.85, 0.15)
     else:
-    	coda_weights_key = "nonfinal coda"
-    # elif syl_idx < sylnum - 2:
-    #     if len(oldsyl) > 2:
-    #         if oldsyl[2] in coda_rules:
-    #             coda_weights_key = coda_rules[oldsyl[2]]
-    #         else:
-    #             coda_weights_key = "coda,before penult prec no coda"
-    #     else:
-    #         coda_weights_key = "coda,before penult prec no coda"
-    # elif syl_idx == sylnum - 2:
-    #     if len(oldsyl) > 2:
-    #         if oldsyl[2] in coda_rules:
-    #             coda_weights_key = coda_rules[oldsyl[2]]
-    #         else:
-    #             coda_weights_key = "coda,penult prec no coda"
-    #     else:
-    #         coda_weights_key = "coda,penult prec no coda"
-    # elif syl_idx == sylnum - 1:
-    #     if len(oldsyl) > 2:
-    #         if oldsyl[2] in coda_rules:
-    #             coda_weights_key = coda_rules[oldsyl[2]]
-    #         else:
-    #             coda_weights_key = "coda,last syl prec no coda"
-    #     else:
-    #         coda_weights_key = "coda,last syl prec no coda"
+        # Polysyllabic word
+        if syl_idx == sylnum - 1:
+            # Final syllable
+            coda_weights = get_weights(cons_df, "final coda")
+        elif syl_idx == sylnum - 2:
+            # For penultimate syllable, increase coda likelihood from 20% to 30%:
+            coda_weights = get_weights(cons_df, "nonfinal coda")
+            coda_weights = adjust_coda_weights(coda_weights, 0.7, 0.3)
+        else:
+            coda_weights = get_weights(cons_df, "nonfinal coda")
 
-    if coda_weights_key is not None:
-        return get_weights(cons_df, coda_weights_key)
+        # Reduce weights with preceding coda of same place feature:
+        if len(oldsyl) > 1:
+            if oldsyl[-1] in cons_place_map.keys() and cons_place_map[oldsyl[-1]] != 'other':
+                reduce_indices = get_reduce_indices(oldsyl, cons_place_map, cons_df, False)
+                coda_weights = adjust_weights_by_place(coda_weights, reduce_indices, 0.1)
+
+    if coda_weights:
+        return coda_weights
     else:
         raise ValueError("Invalid syllable index or total syllable count.")
 
@@ -209,7 +282,7 @@ def generate_nucleus(vowel_df):
     return weighted_random_choice(list(vowel_df.index), vowel_df.iloc[:, 0].astype(float).tolist())
 
 
-def generate_onset(oldsyl, cons_df, syl_idx, sylnum):
+def generate_onset(oldsyl, cons_df, syl_idx, sylnum, cons_place_map):
     """
     Generates an onset (consonant or cluster) for a syllable based on previous syllable and consonant weights.
 
@@ -218,16 +291,17 @@ def generate_onset(oldsyl, cons_df, syl_idx, sylnum):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         syl_idx (int): The index of the current syllable.
         sylnum (int): The total number of syllables.
+        cons_place_map (dict): Mapping from consonants to place features.
 
     Returns:
         str: A randomly selected onset.
     """
     onsets = ['' if c == '_' else c for c in list(cons_df.index)]
-    weights = get_onset_weights(oldsyl, cons_df, syl_idx, sylnum)
+    weights = get_onset_weights(oldsyl, cons_df, syl_idx, sylnum, cons_place_map)
     return weighted_random_choice(onsets, weights)
 
 
-def generate_coda(oldsyl, cons_df, syl_idx, sylnum):
+def generate_coda(oldsyl, cons_df, syl_idx, sylnum, cons_place_map):
     """
     Generates a coda (consonant or cluster) for a syllable based on previous syllable, syllable index, and total syllable count.
 
@@ -236,16 +310,17 @@ def generate_coda(oldsyl, cons_df, syl_idx, sylnum):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         syl_idx (int): The index of the current syllable.
         sylnum (int): The total number of syllables.
+        cons_place_map (dict): Mapping from consonants to place features.
 
     Returns:
         str: A randomly selected coda.
     """
     codas = ['' if c == '_' else c for c in list(cons_df.index)]
-    weights = get_coda_weights(oldsyl, cons_df, syl_idx, sylnum)
+    weights = get_coda_weights(oldsyl, cons_df, syl_idx, sylnum, cons_place_map)
     return weighted_random_choice(codas, weights)
 
 
-def generate_words(vowel_df, cons_df, sylnum, outputlines):
+def generate_words(vowel_df, cons_df, sylnum, outputlines, cons_place_map):
     """
     Generates a list of words based on given vowel and consonant dataframes, number of syllables, and output lines.
 
@@ -254,6 +329,7 @@ def generate_words(vowel_df, cons_df, sylnum, outputlines):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         sylnum (int): The number of syllables in each word. If 0, a random number of syllables is chosen.
         outputlines (int): The number of words to generate.
+        cons_place_map (dict): Mapping from consonants to place features.
 
     Returns:
         list: A list of generated words.
@@ -277,8 +353,8 @@ def generate_words(vowel_df, cons_df, sylnum, outputlines):
         
         for j in range(num_syllables):
             nucleus = generate_nucleus(vowel_df)
-            onset = generate_onset(oldsyl, cons_df, j, num_syllables)
-            coda = generate_coda(oldsyl, cons_df, j, num_syllables)
+            onset = generate_onset(oldsyl, cons_df, j, num_syllables, cons_place_map)
+            coda = generate_coda(oldsyl, cons_df, j, num_syllables, cons_place_map)
             
             syllable = onset + nucleus + coda
             word += syllable + '.' if num_syllables > 1 else syllable
@@ -364,7 +440,7 @@ def sample(wordlist, outputlines):
     return np.random.choice(wordlist, outputlines, replace=False).tolist()
 
 
-def sample_run(vowel_df, cons_df, sylnum, outputlines, sample_n):
+def sample_run(vowel_df, cons_df, sylnum, outputlines, cons_place_map, sample_n):
     """
     Runs multiple samples of word generation and returns a combined sample.
 
@@ -373,6 +449,7 @@ def sample_run(vowel_df, cons_df, sylnum, outputlines, sample_n):
         cons_df (pd.DataFrame): DataFrame containing consonant weights.
         sylnum (int): The number of syllables in each word.
         outputlines (int): The number of words to generate per sample.
+        cons_place_map (dict): Mapping from consonants to place features.
         sample_n (int): The number of samples to run.
 
     Returns:
@@ -382,7 +459,7 @@ def sample_run(vowel_df, cons_df, sylnum, outputlines, sample_n):
     
     for i in range(sample_n):
         print(f'Sample {i + 1}')
-        part_wordlist = generate_words(vowel_df, cons_df, sylnum, outputlines)
+        part_wordlist = generate_words(vowel_df, cons_df, sylnum, outputlines, cons_place_map)
         full_wordlist.extend(part_wordlist)
     
     return sample(full_wordlist, outputlines)
@@ -425,12 +502,12 @@ def handle_patterns(wordlist_file, patterns_file, output_file, args):
         clean_up_ascii(output_file)
 
 
-def generate_wordlist(vowel_df, cons_df, sylnum, outputlines, sampling):
+def generate_wordlist(vowel_df, cons_df, sylnum, outputlines, cons_place_map, sampling):
     if sampling:
         sample_n = int(input("Enter number of samples: (default=10) ") or 10)
-        return sample_run(vowel_df, cons_df, sylnum, outputlines, sample_n)
+        return sample_run(vowel_df, cons_df, sylnum, outputlines, cons_place_map, sample_n)
     else:
-        return generate_words(vowel_df, cons_df, sylnum, outputlines)
+        return generate_words(vowel_df, cons_df, sylnum, outputlines, cons_place_map)
 
 
 def main():
@@ -438,7 +515,9 @@ def main():
 
     if args.mode == "rules":
         vowel_df, cons_df = read_from_csv(args.csvfile)
-        wordlist = generate_wordlist(vowel_df, cons_df, args.sylnum, args.outputlines, args.sampling)
+        place_df = read_place_file("data/place.csv")
+        cons_place_map = get_cons_features(cons_df, place_df)
+        wordlist = generate_wordlist(vowel_df, cons_df, args.sylnum, args.outputlines, cons_place_map, args.sampling)
         write_file(wordlist, "output.txt")
 
         wl_fname = f"wordlist-{args.sylnum if args.sylnum != 0 else 'randnsyl'}.txt"
