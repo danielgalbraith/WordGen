@@ -439,7 +439,7 @@ def post_process(patterns, infile, outfile):
                 if line not in seen_lines:
                     seen_lines.add(line)
                     for pattern, replacement in pats.items():
-                        line = re.sub(re.compile(pattern), replacement, line)
+                        line = re.sub(re.compile(pattern, re.MULTILINE), replacement, line)
                     f2.write(line)
 
 
@@ -520,6 +520,49 @@ def remove_from_lex(sylnum, lex_filepath):
     remover.post_process()
 
 
+def handle_patterns(wordlist_file, patterns_file, output_file, args):
+    """
+    Applies patterns to a wordlist file, processes the output, and optionally converts to ASCII-only.
+
+    Args:
+        wordlist_file (str): Path to the file containing the wordlist.
+        patterns_file (str): Path to the file containing patterns in JSON format.
+        output_file (str): Path to the output file.
+        args (Namespace): A namespace object containing command-line arguments, including ascii_only.
+
+    Returns:
+        None
+    """
+    post_process(patterns_file, wordlist_file, output_file)
+    clean_up()
+    if args.ascii_only:
+        ascii_map = input("Enter filepath for ASCII map: (default=data/ascii_map.json) ") or "data/ascii_map.json"
+        post_process(ascii_map, output_file, "ascii_output.txt")
+        clean_up_ascii(output_file)
+
+
+def generate_wordlist(vowel_df, cons_df, sylnum, outputlines, cons_feat_map, sampling):
+    """
+    Generates a wordlist based on the provided parameters and optionally performs sampling.
+
+    Args:
+        vowel_df (pd.DataFrame): DataFrame containing vowel weights.
+        cons_df (pd.DataFrame): DataFrame containing consonant weights.
+        sylnum (int): The number of syllables in each word.
+        outputlines (int): The number of words to generate.
+        cons_feat_map (dict): Mapping from consonants to place and manner features.
+        sampling (bool): Whether to perform sampling.
+
+    Returns:
+        list: A list of generated words.
+    """
+    if sampling:
+        sample_n = int(input("Enter number of samples: (default=10) ") or 10)
+        return sample_run(vowel_df, cons_df, sylnum, outputlines, cons_feat_map, sample_n)
+    else:
+        return generate_words(vowel_df, cons_df, sylnum, outputlines, cons_feat_map)
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--csvfile", help="Input file with phoneme weights and phonotactic rules.", default="data/example.csv")
@@ -530,23 +573,6 @@ def get_args():
     parser.add_argument("-r", "--remove", help="Option to remove words from the output according to a provided wordlist.", action='store_true', default=False)
     parser.add_argument("-a", "--ascii_only", help="Option to convert IPA to ASCII-only representation.", action='store_true', default=False)
     return parser.parse_args()
-
-
-def handle_patterns(wordlist_file, patterns_file, output_file, args):
-    post_process(patterns_file, wordlist_file, output_file)
-    clean_up()
-    if args.ascii_only:
-        ascii_map = input("Enter filepath for ASCII map: (default=data/ascii_map.json) ") or "data/ascii_map.json"
-        post_process(ascii_map, output_file, "ascii_output.txt")
-        clean_up_ascii(output_file)
-
-
-def generate_wordlist(vowel_df, cons_df, sylnum, outputlines, cons_feat_map, sampling):
-    if sampling:
-        sample_n = int(input("Enter number of samples: (default=10) ") or 10)
-        return sample_run(vowel_df, cons_df, sylnum, outputlines, cons_feat_map, sample_n)
-    else:
-        return generate_words(vowel_df, cons_df, sylnum, outputlines, cons_feat_map)
 
 
 def main():

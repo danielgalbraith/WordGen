@@ -1,7 +1,7 @@
 {
     "([aeiou])([aeiou])([aeiou])": "\\1\\2q\\3",
-    "ai": "ay",
-    "au": "aw",
+    "ai(?=($|[aeiou]|[^aeiou][aeiou]|(ng|ny)[aeiou]))": "ay",
+    "au(?=($|[aeiou]|[^aeiou][aeiou]|(ng|ny)[aeiou]))": "aw",
     "ey(?!i)": "e",
     "ew(?!i)": "e",
     "iy(?!i)": "i",
