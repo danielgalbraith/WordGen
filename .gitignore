@@ -2,9 +2,5 @@ input*
 output*
 wordlist-*
 orig-*
-lex.txt
-data.csv
-data.npy
-vocab.pkl
 __pycache__*
-all.txt
+markov*.txt

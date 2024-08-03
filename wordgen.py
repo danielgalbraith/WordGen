@@ -523,7 +523,6 @@ def remove_from_lex(sylnum, lex_filepath):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--csvfile", help="Input file with phoneme weights and phonotactic rules.", default="data/example.csv")
-    parser.add_argument("-m", "--mode", help="Choose between deterministic rules or character-level LM (LSTM) modes.", default="rules")
     parser.add_argument("-n", "--sylnum", help="Number of syllables in generated words.", type=int, default=0)
     parser.add_argument("-o", "--outputlines", help="Number of output words generated.", type=int, default=3000)
     parser.add_argument("-p", "--patterns", help="Optional json file for post-processing rules.", action='store_true', default=False)
@@ -553,28 +552,24 @@ def generate_wordlist(vowel_df, cons_df, sylnum, outputlines, cons_feat_map, sam
 def main():
     args = get_args()
 
-    if args.mode == "rules":
-        vowel_df, cons_df = read_from_csv(args.csvfile)
-        feat_df = read_feature_file("data/features.csv")
-        cons_feat_map = get_cons_features(cons_df, feat_df)
-        wordlist = generate_wordlist(vowel_df, cons_df, args.sylnum, args.outputlines, cons_feat_map, args.sampling)
-        write_file(wordlist, "output.txt")
+    vowel_df, cons_df = read_from_csv(args.csvfile)
+    feat_df = read_feature_file("data/features.csv")
+    cons_feat_map = get_cons_features(cons_df, feat_df)
+    wordlist = generate_wordlist(vowel_df, cons_df, args.sylnum, args.outputlines, cons_feat_map, args.sampling)
+    write_file(wordlist, "output.txt")
 
-        wl_fname = f"wordlist-{args.sylnum if args.sylnum != 0 else 'randnsyl'}.txt"
-        if args.patterns:
-            patterns_file = input("Enter filepath for patterns: (default=data/patterns.json) ") or "data/patterns.json"
-            handle_patterns("output.txt", patterns_file, wl_fname, args)
-        else:
-            os.rename("output.txt", wl_fname)
-            clean_up()
-        
-        if args.ascii_only:
-            ascii_map = input("Enter filepath for ASCII map: (default=data/ascii_map.json) ") or "data/ascii_map.json"
-            post_process(ascii_map, wl_fname, "ascii_output.txt")
-            clean_up_ascii(wl_fname)
-
-    elif args.mode == "lstm":
-        subprocess.call(['./lstm_run.sh'])
+    wl_fname = f"wordlist-{args.sylnum if args.sylnum != 0 else 'randnsyl'}.txt"
+    if args.patterns:
+        patterns_file = input("Enter filepath for patterns: (default=data/patterns.json) ") or "data/patterns.json"
+        handle_patterns("output.txt", patterns_file, wl_fname, args)
+    else:
+        os.rename("output.txt", wl_fname)
+        clean_up()
+    
+    if args.ascii_only:
+        ascii_map = input("Enter filepath for ASCII map: (default=data/ascii_map.json) ") or "data/ascii_map.json"
+        post_process(ascii_map, wl_fname, "ascii_output.txt")
+        clean_up_ascii(wl_fname)
 
     if args.remove:
         lex_filepath = input("Enter filepath for lexicon: (default=data/lexicon.txt) ") or "data/lexicon.txt"

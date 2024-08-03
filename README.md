@@ -1,5 +1,5 @@
 # WordGen
-A program written in Python 3.7 for generating random words based on a predefined phonology. Both deterministic rule-based and character model (LSTM) modes available.
+A program written in Python 3.7 for generating random words based on a predefined phonology. Both deterministic rule-based and character model (Markov chain) modes available.
 
 ## Features
 
@@ -7,7 +7,7 @@ Wordgen has the following features by default:
 
 ### Rule-based mode
 1. Example phoneme inventory: /a e i o u m n ŋ ɲ p t k ʔ b d g f s z ʃ h tʃ l r j w/
-2. Example phoneme weights based on an average across Swadesh lists from an 100-language sample; statistical differentiation between word-initial onsets, medial onsets and coda consonants
+2. Example phoneme weights based on an average across Swadesh lists from an 100-language sample; statistical differentiation between word-initial onsets, medial onsets, nonfinal and final coda consonants
 3. Example syllable structure: (C)V(C) with possible onsets /m n ŋ ɲ p t k b d g f s z ʃ h tʃ l r j w/ and possible codas /m n ŋ p t k s l r j w/
 4. Can specify syllable count and number of output words
 5. Example weights have built-in dispreference for repeated syllables with same point of articulation (reduced weight if previous syllable has same POA)
@@ -15,9 +15,6 @@ Wordgen has the following features by default:
 7. Post-processing according to assimilation rules included in `patterns.json`
 
 These default settings can be changed by altering the phoneme inventory and weights in the input CSV, or by changing the number of lines/syllables in the output.
-
-### LSTM mode
-The submodule `char_rnn` includes [Sherjil Ozair](https://github.com/sherjilozair)'s character-level language model [char-rnn-tensorflow](https://github.com/sherjilozair/char-rnn-tensorflow). The scripts `lstm_train.sh` and `lstm_sample.sh` can be edited as desired. Default input consists of a text file list of lexemes, e.g. the provided `data/input.txt`.
 
 ## Additional tools
 1. `lex_remove.py` removes a specific set of words from the generated wordlist; this functionality is included in `wordgen.py` with the `-r` flag.
@@ -52,11 +49,12 @@ Rules mode is run by default. The logic for the rule-based mode is hard-coded in
 | V | a | e | i | o | ... |
 | "all" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
 | C | _ | m | n | p | ... |
-| "onsc1,rule 1" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
-| "onsc1,rule 2" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
-| "coda,rule 1" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
+| "initial onset" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
+| "medial onset" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
+| "nonfinal coda" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
+| "final coda" | 1.0 | 1.0 | 1.0 | 1.0 | ... |
 
-Consonantal rule names should be in quotation marks and formatted as "[SEGMENT],[CONTEXT]"; the vowel rule in the example applies to all nuclei. The hard-coded logic in `wordgen.py` must be changed if different syllable structures are desired, such as additional onset or coda consonants, vowel length rules, diphthongs, tones etc.
+The hard-coded logic in `wordgen.py` must be changed if different syllable structures are desired, such as additional onset or coda consonants, vowel length rules, diphthongs, tones etc.
 
 ### Options
 
@@ -96,14 +94,39 @@ The `-r` flag prompts the user to specify a lexicon text file, by default the pr
 
 The provided example CSV represents phonemes using IPA. The `-a` flag can be used to convert IPA to ASCII characters, following the rules in `data/ascii_map.json`. The logic is the same as that of the `-p` flag post-processing rules, where the user is prompted for the json rules file.
 
-## Character-level language model
+## Markov chain mode
 
-LSTM mode uses the `char_rnn` submodule by [Sherjil Ozair](https://github.com/sherjilozair), which requires Tensorflow <2.0, by default [v1.15.0](https://github.com/tensorflow/tensorflow/releases/tag/v1.15.0) For further information about the RNN model structure, see e.g. [here](https://towardsdatascience.com/character-level-language-model-1439f5dd87fe). Run the following command to use the character model:
+A Markov chain character model can be trained using `python markov.py`. The default is a third-order model, i.e. a window of three preceding characters. By default, phonotactic rules are applied using `data/phonotactics.tsv` to enforce the same syllable structure as provided in the rule-based mode; this file may be modified to permit different phonemes in the syllabic positions.
 
-```
-python wordgen.py -m lstm
-```
+### Options
 
-WordGen will call the script `lstm_run.sh`, where the model parameters can be altered. The `char_rnn` code requires the input file to be named `input.txt`, but the path to the directory containing this file can be specified in `lstm_run.sh`. By default the model will be saved to `output` under the WordGen root directory.
+#### Model order
 
-The script first trains the model for 50 epochs and then samples 30,000 characters by default, or approximately 3000 words using the provided English wordlist `data/input.txt`. The script also removes duplicates and moves generated data and vocab files into the output directory.
+The order (i.e. number of characters considered in the preceding window) can be changed using the `-m` flag.
+
+#### Max length
+
+The maximum length of the output sequence can be specified using the `-l` flag (default 10 characters). This does not consider post-processing of invalid sequences according to the phonotactic rules, which may instert epenthetic segments and result in a longer sequence.
+
+#### Number of output words
+
+As in rule-based mode, the number of output words can be specified using the `-o` flag.
+
+#### Custom phonotactics
+
+A different phonotactic rules file may be specified using the `-t` flag. The expected file format is as follows:
+
+| Onset | Nucleus | Coda |
+| --- | --- | --- |
+| m | a | m |
+| n | e | n |
+| p | i | ng |
+| t | o | l |
+| ... | ... | ... |
+
+where the columns indicate the permitted onsets, nuclei and codas respectively.
+
+#### Custom post-processing rules
+
+As in rule-based mode, the `-p` flag specifies a JSON file containing post-processing rules; in Markov mode, the default file is `data/markov_patterns.json`.
+
